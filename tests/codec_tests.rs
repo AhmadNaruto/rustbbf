@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::Write;
-use bbf::codec::{Builder, Reader, BBF_VARIABLE_REAM_SIZE_FLAG};
+use std::io::{Write, Read};
+use bbf::bbf::{Builder, Reader, BBF_VARIABLE_REAM_SIZE_FLAG};
 
 #[test]
 fn test_build_read_petrify_roundtrip() {
@@ -111,7 +111,7 @@ fn test_build_read_petrify_roundtrip() {
 
     // 4. Petrify container
     let petrified_path = dir.path().join("petrified_container.bbf");
-    bbf::codec::petrify_file(&output_path, &petrified_path).expect("Failed to petrify");
+    bbf::bbf::petrify_file(&output_path, &petrified_path).expect("Failed to petrify");
 
     // 5. Read petrified container
     {
@@ -195,5 +195,70 @@ fn test_logical_page_order_preservation() {
     assert_eq!(data0, b"IMAGE_CONTENT_B");
     assert_eq!(data1, b"IMAGE_CONTENT_C");
     assert_eq!(data2, b"IMAGE_CONTENT_A");
+}
+
+#[test]
+fn test_archive_builders_cbz_cbt_cb7() {
+    let dir = tempfile::tempdir().expect("Failed to create temp dir");
+    
+    let img_a = dir.path().join("a.png");
+    File::create(&img_a).unwrap().write_all(b"A_DATA").unwrap();
+    let img_b = dir.path().join("b.png");
+    File::create(&img_b).unwrap().write_all(b"B_DATA").unwrap();
+
+    // 1. Test CBZ (Zip)
+    let cbz_path = dir.path().join("test.cbz");
+    {
+        let mut builder = bbf::archive::ArchiveBuilder::new(&cbz_path, bbf::archive::ArchiveFormat::Cbz).unwrap();
+        builder.add_page(&img_a, "a.png").unwrap();
+        builder.add_page(&img_b, "b.png").unwrap();
+        builder.finalize().unwrap();
+    }
+    assert!(cbz_path.exists());
+
+    let zip_file = File::open(&cbz_path).unwrap();
+    let mut zip_archive = zip::ZipArchive::new(zip_file).unwrap();
+    assert_eq!(zip_archive.len(), 2);
+    
+    let mut a_entry = zip_archive.by_name("a.png").unwrap();
+    let mut a_data = Vec::new();
+    a_entry.read_to_end(&mut a_data).unwrap();
+    assert_eq!(a_data, b"A_DATA");
+
+    // 2. Test CBT (Tar)
+    let cbt_path = dir.path().join("test.cbt");
+    {
+        let mut builder = bbf::archive::ArchiveBuilder::new(&cbt_path, bbf::archive::ArchiveFormat::Cbt).unwrap();
+        builder.add_page(&img_a, "a.png").unwrap();
+        builder.add_page(&img_b, "b.png").unwrap();
+        builder.finalize().unwrap();
+    }
+    assert!(cbt_path.exists());
+
+    let tar_file = File::open(&cbt_path).unwrap();
+    let mut tar_archive = tar::Archive::new(tar_file);
+    let entries: Vec<_> = tar_archive.entries().unwrap().map(|e| e.unwrap()).collect();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].path().unwrap().to_str().unwrap(), "a.png");
+
+    // 3. Test CB7 (7z)
+    let cb7_path = dir.path().join("test.cb7");
+    {
+        let mut builder = bbf::archive::ArchiveBuilder::new(&cb7_path, bbf::archive::ArchiveFormat::Cb7).unwrap();
+        builder.add_page(&img_a, "a.png").unwrap();
+        builder.add_page(&img_b, "b.png").unwrap();
+        builder.finalize().unwrap();
+    }
+    assert!(cb7_path.exists());
+
+    let cb7_file = File::open(&cb7_path).unwrap();
+    let cb7_len = cb7_file.metadata().unwrap().len();
+    let mut seven_z = sevenz_rust::SevenZReader::new(cb7_file, cb7_len, sevenz_rust::Password::empty()).unwrap();
+    let mut file_names = Vec::new();
+    seven_z.for_each_entries(|entry, _reader| {
+        file_names.push(entry.name().to_string());
+        Ok(true)
+    }).unwrap();
+    assert_eq!(file_names, vec!["a.png", "b.png"]);
 }
 

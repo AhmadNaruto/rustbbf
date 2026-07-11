@@ -1,7 +1,7 @@
 use jni::JNIEnv;
 use jni::objects::{JClass, JString, JByteBuffer};
 use jni::sys::{jboolean, jint, jlong, jobject, jstring, jbyteArray};
-use crate::codec::{Reader, Builder};
+use crate::bbf::{Reader, Builder};
 
 unsafe fn get_reader<'a>(handle: jlong) -> Option<&'a Reader> {
     if handle == 0 {
@@ -643,7 +643,79 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFBuilder_petrifyNa
     let in_str = jstring_to_string(&mut env, input_path);
     let out_str = jstring_to_string(&mut env, output_path);
         
-    match crate::codec::petrify_file(in_str, out_str) {
+    match crate::bbf::petrify_file(in_str, out_str) {
+        Ok(_) => 1,
+        Err(_) => 0,
+    }
+}
+
+// ArchiveBuilder JNI Native Interface
+
+use crate::archive::{ArchiveBuilder, ArchiveFormat};
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_ArchiveBuilder_createNative(
+    mut env: JNIEnv,
+    _class: JClass,
+    output_path: jstring,
+    format: jint,
+) -> jlong {
+    let path = jstring_to_string(&mut env, output_path);
+    let fmt = match format {
+        0 => ArchiveFormat::Cbz,
+        1 => ArchiveFormat::Cbt,
+        2 => ArchiveFormat::Cb7,
+        _ => ArchiveFormat::Cbr,
+    };
+    match ArchiveBuilder::new(path, fmt) {
+        Ok(builder) => Box::into_raw(Box::new(builder)) as jlong,
+        Err(_) => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_ArchiveBuilder_closeNative(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if handle != 0 {
+        let _ = Box::from_raw(handle as *mut ArchiveBuilder);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_ArchiveBuilder_addPage(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    file_path: jstring,
+    name_in_archive: jstring,
+) -> jboolean {
+    let builder = if handle == 0 {
+        return 0;
+    } else {
+        &mut *(handle as *mut ArchiveBuilder)
+    };
+    let path = jstring_to_string(&mut env, file_path);
+    let entry_name = jstring_to_string(&mut env, name_in_archive);
+    match builder.add_page(path, &entry_name) {
+        Ok(success) => success as jboolean,
+        Err(_) => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_ArchiveBuilder_finalizeNative(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jboolean {
+    if handle == 0 {
+        return 0;
+    }
+    let builder = Box::from_raw(handle as *mut ArchiveBuilder);
+    match builder.finalize() {
         Ok(_) => 1,
         Err(_) => 0,
     }

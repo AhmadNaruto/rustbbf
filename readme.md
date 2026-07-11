@@ -143,6 +143,37 @@ BBFBuilder("/sdcard/Documents/output.bbf", 12, 16, 2).use { builder ->
 }
 ```
 
+### Comic Book Archive Builder (CBZ, CBT, CB7)
+
+Pustaka ini juga mendukung pembuatan berkas Comic Book Archive standar secara native.
+
+#### Java Example
+```java
+import io.github.anaruto.libbbf.ArchiveBuilder;
+import io.github.anaruto.libbbf.ArchiveFormat;
+
+try (ArchiveBuilder builder = new ArchiveBuilder("/sdcard/Documents/book.cbz", ArchiveFormat.CBZ)) {
+    builder.addPage("/sdcard/Pictures/page1.png", "001.png");
+    builder.addPage("/sdcard/Pictures/page2.png", "002.png");
+    builder.finalizeBuilder();
+}
+```
+
+#### Kotlin Example
+```kotlin
+import io.github.anaruto.libbbf.ArchiveBuilder
+import io.github.anaruto.libbbf.ArchiveFormat
+
+ArchiveBuilder("/sdcard/Documents/book.cb7", ArchiveFormat.CB7).use { builder ->
+    builder.addPage("/sdcard/Pictures/page1.png", "001.png")
+    builder.addPage("/sdcard/Pictures/page2.png", "002.png")
+    builder.finalizeBuilder()
+}
+```
+
+> [!NOTE]
+> Format **CBR (RAR)** tidak didukung untuk pembuatan/penulisan (write) karena algoritma enkoder kompresi RAR berlisensi proprietary (hak milik tertutup). Hanya pembacaan/ekstraksi file RAR yang didukung oleh pustaka open-source secara umum.
+
 ---
 
 ## Technical Specifications
