@@ -54,57 +54,92 @@ Library `.so` hasil kompilasi akan diletakkan di `target/<architecture>/release/
 
 ---
 
-## JNI Usage Example (Java / Android)
+## JNI Usage Example (Java / Kotlin / Android)
 
-Salin kelas wrapper di [java/io.github.anaruto.libbbf/](java/io.github.anaruto.libbbf/) ke dalam paket Java proyek Android Anda.
+Salin kelas wrapper di [java/io.github.anaruto.libbbf/](java/io.github.anaruto.libbbf/) (untuk Java) atau [kotlin/io.github.anaruto.libbbf/](kotlin/io.github.anaruto.libbbf/) (untuk Kotlin) ke dalam proyek Android Anda.
 
-### Membaca File BBF
+### Java Example
+
+#### Membaca File BBF
 ```java
 import io.github.anaruto.libbbf.BBFReader;
 import io.github.anaruto.libbbf.BBFAsset;
 import java.nio.ByteBuffer;
 
 try (BBFReader reader = new BBFReader("/sdcard/Documents/manga.bbf")) {
-    // 1. Validasi footer hash
     if (!reader.verifyFooterHash()) {
         throw new RuntimeException("File BBF korup!");
     }
 
-    // 2. Ambil informasi halaman
     long pageCount = reader.getPageCount();
     for (int i = 0; i < pageCount; i++) {
         long assetIndex = reader.getPageAssetIndex(i);
         BBFAsset asset = reader.getAsset((int) assetIndex);
         
-        // Dapatkan data mentah gambar (PNG, WEBP, AVIF, dll.)
         byte[] imageBytes = reader.getAssetData((int) assetIndex);
         
-        // ATAU baca langsung ke direct ByteBuffer (zero-copy)
         ByteBuffer directBuffer = ByteBuffer.allocateDirect((int) asset.fileSize);
         reader.readAssetDataDirect((int) assetIndex, directBuffer, 0, (int) asset.fileSize);
     }
 }
 ```
 
-### Membuat File BBF
+#### Membuat File BBF
 ```java
 import io.github.anaruto.libbbf.BBFBuilder;
 
-// Buat builder baru (path_output, alignment_exponent, ream_exponent, flags)
 try (BBFBuilder builder = new BBFBuilder("/sdcard/Documents/output.bbf", 12, 16, 2)) {
-    // Tambah halaman gambar
     builder.addPage("/sdcard/Pictures/page1.png", 0, 0);
     builder.addPage("/sdcard/Pictures/page2.png", 0, 0);
     
-    // Tambah metadata
     builder.addMeta("Title", "My Manga Vol. 1", null);
     builder.addMeta("Author", "Illustrator", null);
     
-    // Tambah section / bab
     builder.addSection("Chapter 1", 0, null);
-    
-    // Finalisasi kontainer
     builder.finalizeBuilder();
+}
+```
+
+### Kotlin Example
+
+#### Membaca File BBF (Zero-copy direct ByteBuffer)
+```kotlin
+import io.github.anaruto.libbbf.BBFReader
+import java.nio.ByteBuffer
+
+BBFReader("/sdcard/Documents/manga.bbf").use { reader ->
+    if (!reader.verifyFooterHash()) {
+        throw RuntimeException("File BBF korup!")
+    }
+
+    val pageCount = reader.pageCount
+    for (i in 0 until pageCount) {
+        val assetIndex = reader.getPageAssetIndex(i.toInt())
+        val asset = reader.getAsset(assetIndex.toInt())
+        
+        // Membaca data mentah (ByteArray)
+        val imageBytes = reader.getAssetData(assetIndex.toInt())
+        
+        // ATAU membaca langsung ke direct ByteBuffer (zero-copy)
+        val directBuffer = ByteBuffer.allocateDirect(asset.fileSize.toInt())
+        reader.readAssetDataDirect(assetIndex.toInt(), directBuffer, 0, asset.fileSize.toInt())
+    }
+}
+```
+
+#### Membuat File BBF
+```kotlin
+import io.github.anaruto.libbbf.BBFBuilder
+
+BBFBuilder("/sdcard/Documents/output.bbf", 12, 16, 2).use { builder ->
+    builder.addPage("/sdcard/Pictures/page1.png", 0, 0)
+    builder.addPage("/sdcard/Pictures/page2.png", 0, 0)
+    
+    builder.addMeta("Title", "My Manga Vol. 1", null)
+    builder.addMeta("Author", "Illustrator", null)
+    
+    builder.addSection("Chapter 1", 0, null)
+    builder.finalizeBuilder()
 }
 ```
 
