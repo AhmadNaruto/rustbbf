@@ -1,0 +1,16 @@
+[package]
+name = "libbbf"
+version = "3.0.0"
+edition = "2021"
+
+[lib]
+name = "bbf"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = { version = "0.21.1", default-features = false }
+xxhash-rust = { version = "0.8.12", features = ["xxh3"] }
+memmap2 = "0.9.5"
+
+[dev-dependencies]
+tempfile = "3.10.1"
