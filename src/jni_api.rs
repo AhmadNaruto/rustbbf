@@ -3,12 +3,20 @@ use jni::objects::{JClass, JString, JByteBuffer};
 use jni::sys::{jboolean, jint, jlong, jobject, jstring, jbyteArray};
 use crate::codec::{Reader, Builder};
 
-unsafe fn get_reader<'a>(handle: jlong) -> &'a Reader {
-    &*(handle as *const Reader)
+unsafe fn get_reader<'a>(handle: jlong) -> Option<&'a Reader> {
+    if handle == 0 {
+        None
+    } else {
+        Some(&*(handle as *const Reader))
+    }
 }
 
-unsafe fn get_mut_builder<'a>(handle: jlong) -> &'a mut Builder {
-    &mut *(handle as *mut Builder)
+unsafe fn get_mut_builder<'a>(handle: jlong) -> Option<&'a mut Builder> {
+    if handle == 0 {
+        None
+    } else {
+        Some(&mut *(handle as *mut Builder))
+    }
 }
 
 unsafe fn jstring_to_string(env: &mut JNIEnv, j_str: jstring) -> String {
@@ -96,8 +104,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getVersion
     _class: JClass,
     handle: jlong,
 ) -> jint {
-    let reader = get_reader(handle);
-    reader.header.version as jint
+    match get_reader(handle) {
+        Some(reader) => reader.header.version as jint,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -106,8 +116,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getHeaderF
     _class: JClass,
     handle: jlong,
 ) -> jint {
-    let reader = get_reader(handle);
-    reader.header.flags as jint
+    match get_reader(handle) {
+        Some(reader) => reader.header.flags as jint,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -116,8 +128,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAlignme
     _class: JClass,
     handle: jlong,
 ) -> jint {
-    let reader = get_reader(handle);
-    reader.header.alignment as jint
+    match get_reader(handle) {
+        Some(reader) => reader.header.alignment as jint,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -126,8 +140,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getReamSiz
     _class: JClass,
     handle: jlong,
 ) -> jint {
-    let reader = get_reader(handle);
-    reader.header.ream_size as jint
+    match get_reader(handle) {
+        Some(reader) => reader.header.ream_size as jint,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -136,8 +152,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAssetCo
     _class: JClass,
     handle: jlong,
 ) -> jlong {
-    let reader = get_reader(handle);
-    reader.footer.asset_count as jlong
+    match get_reader(handle) {
+        Some(reader) => reader.footer.asset_count as jlong,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -146,8 +164,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getPageCou
     _class: JClass,
     handle: jlong,
 ) -> jlong {
-    let reader = get_reader(handle);
-    reader.footer.page_count as jlong
+    match get_reader(handle) {
+        Some(reader) => reader.footer.page_count as jlong,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -156,8 +176,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getSection
     _class: JClass,
     handle: jlong,
 ) -> jlong {
-    let reader = get_reader(handle);
-    reader.footer.section_count as jlong
+    match get_reader(handle) {
+        Some(reader) => reader.footer.section_count as jlong,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -166,8 +188,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getMetaCou
     _class: JClass,
     handle: jlong,
 ) -> jlong {
-    let reader = get_reader(handle);
-    reader.footer.meta_count as jlong
+    match get_reader(handle) {
+        Some(reader) => reader.footer.meta_count as jlong,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -177,7 +201,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getMetaKey
     handle: jlong,
     index: jint,
 ) -> jstring {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return std::ptr::null_mut(),
+    };
     let res = reader.get_meta(index as u64)
         .and_then(|m| reader.get_string(m.key_offset));
     to_jstring(&mut env, res)
@@ -190,7 +217,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getMetaVal
     handle: jlong,
     index: jint,
 ) -> jstring {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return std::ptr::null_mut(),
+    };
     let res = reader.get_meta(index as u64)
         .and_then(|m| reader.get_string(m.value_offset));
     to_jstring(&mut env, res)
@@ -203,7 +233,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getMetaPar
     handle: jlong,
     index: jint,
 ) -> jstring {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return std::ptr::null_mut(),
+    };
     let res = reader.get_meta(index as u64).and_then(|m| {
         if m.parent_offset == 0xFFFFFFFFFFFFFFFF {
             Ok(String::new())
@@ -221,7 +254,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getSection
     handle: jlong,
     index: jint,
 ) -> jstring {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return std::ptr::null_mut(),
+    };
     let res = reader.get_section(index as u64)
         .and_then(|s| reader.get_string(s.title_offset));
     to_jstring(&mut env, res)
@@ -234,7 +270,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getSection
     handle: jlong,
     index: jint,
 ) -> jlong {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return -1,
+    };
     match reader.get_section(index as u64) {
         Ok(s) => s.start_index as jlong,
         Err(_) => -1,
@@ -248,7 +287,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getSection
     handle: jlong,
     index: jint,
 ) -> jstring {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return std::ptr::null_mut(),
+    };
     let res = reader.get_section(index as u64).and_then(|s| {
         if s.parent_offset == 0xFFFFFFFFFFFFFFFF {
             Ok(String::new())
@@ -266,7 +308,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getPageAss
     handle: jlong,
     index: jint,
 ) -> jlong {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return -1,
+    };
     match reader.get_page(index as u64) {
         Ok(p) => p.asset_index as jlong,
         Err(_) => -1,
@@ -280,7 +325,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getPageFla
     handle: jlong,
     index: jint,
 ) -> jint {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return 0,
+    };
     match reader.get_page(index as u64) {
         Ok(p) => p.flags as jint,
         Err(_) => 0,
@@ -294,7 +342,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAssetFi
     handle: jlong,
     index: jint,
 ) -> jlong {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return -1,
+    };
     match reader.get_asset(index as u64) {
         Ok(a) => a.file_offset as jlong,
         Err(_) => -1,
@@ -308,7 +359,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAssetFi
     handle: jlong,
     index: jint,
 ) -> jlong {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return -1,
+    };
     match reader.get_asset(index as u64) {
         Ok(a) => a.file_size as jlong,
         Err(_) => -1,
@@ -322,7 +376,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAssetFl
     handle: jlong,
     index: jint,
 ) -> jint {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return 0,
+    };
     match reader.get_asset(index as u64) {
         Ok(a) => a.flags as jint,
         Err(_) => 0,
@@ -336,7 +393,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAssetTy
     handle: jlong,
     index: jint,
 ) -> jint {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return 0,
+    };
     match reader.get_asset(index as u64) {
         Ok(a) => a.asset_type as jint,
         Err(_) => 0,
@@ -350,7 +410,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAssetHa
     handle: jlong,
     index: jint,
 ) -> jbyteArray {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return std::ptr::null_mut(),
+    };
     match reader.get_asset(index as u64) {
         Ok(a) => {
             let mut hash_bytes = [0u8; 16];
@@ -372,7 +435,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_getAssetDa
     handle: jlong,
     index: jint,
 ) -> jbyteArray {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return std::ptr::null_mut(),
+    };
     match reader.get_asset(index as u64) {
         Ok(asset) => match reader.get_asset_data(&asset) {
             Ok(data) => {
@@ -397,7 +463,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_readAssetD
     offset: jint,
     len: jint,
 ) -> jint {
-    let reader = get_reader(handle);
+    let reader = match get_reader(handle) {
+        Some(r) => r,
+        None => return -1,
+    };
     let asset = match reader.get_asset(index as u64) {
         Ok(a) => a,
         Err(_) => return -1,
@@ -440,8 +509,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_verifyFoot
     _class: JClass,
     handle: jlong,
 ) -> jboolean {
-    let reader = get_reader(handle);
-    reader.verify_footer_hash() as jboolean
+    match get_reader(handle) {
+        Some(reader) => reader.verify_footer_hash() as jboolean,
+        None => 0,
+    }
 }
 
 #[no_mangle]
@@ -451,8 +522,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFReader_verifyAsse
     handle: jlong,
     index: jint,
 ) -> jboolean {
-    let reader = get_reader(handle);
-    reader.verify_asset_hash(index as u64) as jboolean
+    match get_reader(handle) {
+        Some(reader) => reader.verify_asset_hash(index as u64) as jboolean,
+        None => 0,
+    }
 }
 
 
@@ -494,7 +567,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFBuilder_addPage(
     page_flags: jint,
     asset_flags: jint,
 ) -> jboolean {
-    let builder = get_mut_builder(handle);
+    let builder = match get_mut_builder(handle) {
+        Some(b) => b,
+        None => return 0,
+    };
     let path = jstring_to_string(&mut env, file_path);
     match builder.add_page(path, page_flags as u32, asset_flags as u32) {
         Ok(success) => success as jboolean,
@@ -511,7 +587,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFBuilder_addMeta(
     value: jstring,
     parent: jstring,
 ) -> jboolean {
-    let builder = get_mut_builder(handle);
+    let builder = match get_mut_builder(handle) {
+        Some(b) => b,
+        None => return 0,
+    };
     let key_str = jstring_to_string(&mut env, key);
     let val_str = jstring_to_string(&mut env, value);
     let parent_opt = jstring_to_option_string(&mut env, parent);
@@ -528,7 +607,10 @@ pub unsafe extern "system" fn Java_io_github_anaruto_libbbf_BBFBuilder_addSectio
     start_index: jlong,
     parent: jstring,
 ) -> jboolean {
-    let builder = get_mut_builder(handle);
+    let builder = match get_mut_builder(handle) {
+        Some(b) => b,
+        None => return 0,
+    };
     let name_str = jstring_to_string(&mut env, name);
     let parent_opt = jstring_to_option_string(&mut env, parent);
 

@@ -383,11 +383,15 @@ impl Reader {
         if index >= self.footer.asset_count {
             return Err(format!("Asset index {} out of bounds", index));
         }
-        let offset = self.footer.asset_offset + index * Asset::SIZE as u64;
+        let offset = index
+            .checked_mul(Asset::SIZE as u64)
+            .and_then(|o| self.footer.asset_offset.checked_add(o))
+            .ok_or_else(|| "Integer overflow calculating asset offset".to_string())?;
+
         if !self.is_safe(offset, Asset::SIZE as u64) {
             return Err("Asset entry goes out of file bounds".to_string());
         }
-        let start = offset as usize;
+        let start = offset.try_into().map_err(|_| "Offset exceeds memory address space".to_string())?;
         Asset::from_bytes(&self.source.as_ref()[start..start + Asset::SIZE])
             .ok_or_else(|| "Failed to parse asset entry".to_string())
     }
@@ -396,11 +400,15 @@ impl Reader {
         if index >= self.footer.page_count {
             return Err(format!("Page index {} out of bounds", index));
         }
-        let offset = self.footer.page_offset + index * Page::SIZE as u64;
+        let offset = index
+            .checked_mul(Page::SIZE as u64)
+            .and_then(|o| self.footer.page_offset.checked_add(o))
+            .ok_or_else(|| "Integer overflow calculating page offset".to_string())?;
+
         if !self.is_safe(offset, Page::SIZE as u64) {
             return Err("Page entry goes out of file bounds".to_string());
         }
-        let start = offset as usize;
+        let start = offset.try_into().map_err(|_| "Offset exceeds memory address space".to_string())?;
         Page::from_bytes(&self.source.as_ref()[start..start + Page::SIZE])
             .ok_or_else(|| "Failed to parse page entry".to_string())
     }
@@ -409,11 +417,15 @@ impl Reader {
         if index >= self.footer.section_count {
             return Err(format!("Section index {} out of bounds", index));
         }
-        let offset = self.footer.section_offset + index * Section::SIZE as u64;
+        let offset = index
+            .checked_mul(Section::SIZE as u64)
+            .and_then(|o| self.footer.section_offset.checked_add(o))
+            .ok_or_else(|| "Integer overflow calculating section offset".to_string())?;
+
         if !self.is_safe(offset, Section::SIZE as u64) {
             return Err("Section entry goes out of file bounds".to_string());
         }
-        let start = offset as usize;
+        let start = offset.try_into().map_err(|_| "Offset exceeds memory address space".to_string())?;
         Section::from_bytes(&self.source.as_ref()[start..start + Section::SIZE])
             .ok_or_else(|| "Failed to parse section entry".to_string())
     }
@@ -422,11 +434,15 @@ impl Reader {
         if index >= self.footer.meta_count {
             return Err(format!("Metadata index {} out of bounds", index));
         }
-        let offset = self.footer.meta_offset + index * Meta::SIZE as u64;
+        let offset = index
+            .checked_mul(Meta::SIZE as u64)
+            .and_then(|o| self.footer.meta_offset.checked_add(o))
+            .ok_or_else(|| "Integer overflow calculating metadata offset".to_string())?;
+
         if !self.is_safe(offset, Meta::SIZE as u64) {
             return Err("Metadata entry goes out of file bounds".to_string());
         }
-        let start = offset as usize;
+        let start = offset.try_into().map_err(|_| "Offset exceeds memory address space".to_string())?;
         Meta::from_bytes(&self.source.as_ref()[start..start + Meta::SIZE])
             .ok_or_else(|| "Failed to parse metadata entry".to_string())
     }
@@ -441,16 +457,28 @@ impl Reader {
             return Err(format!("String offset {} out of pool size {}", offset, pool_size));
         }
 
-        let abs_start = pool_offset + offset;
+        let abs_start = pool_offset
+            .checked_add(offset)
+            .ok_or_else(|| "Integer overflow calculating absolute string offset".to_string())?;
         let file_bytes = self.source.as_ref();
-        let abs_end_limit = (pool_offset + pool_size) as usize;
+        
+        let pool_end = pool_offset
+            .checked_add(pool_size)
+            .ok_or_else(|| "Integer overflow calculating string pool end".to_string())?;
+        let abs_end_limit: usize = pool_end
+            .try_into()
+            .map_err(|_| "String pool end exceeds memory address space".to_string())?;
 
-        if abs_start as usize >= file_bytes.len() {
+        let start: usize = abs_start
+            .try_into()
+            .map_err(|_| "Absolute string offset exceeds memory address space".to_string())?;
+
+        if start >= file_bytes.len() {
             return Err("String offset starts out of file bounds".to_string());
         }
 
-        let scan_end = std::cmp::min(abs_start as usize + MAX_FORME_SIZE, abs_end_limit);
-        let slice = &file_bytes[abs_start as usize..scan_end];
+        let scan_end = std::cmp::min(start + MAX_FORME_SIZE, abs_end_limit);
+        let slice = &file_bytes[start..scan_end];
 
         if let Some(null_pos) = slice.iter().position(|&b| b == 0) {
             let str_bytes = &slice[..null_pos];
@@ -465,14 +493,32 @@ impl Reader {
         if !self.is_safe(asset.file_offset, asset.file_size) {
             return Err("Asset data range goes out of file bounds".to_string());
         }
-        let start = asset.file_offset as usize;
-        let end = start + asset.file_size as usize;
+        let start: usize = asset.file_offset
+            .try_into()
+            .map_err(|_| "Asset offset exceeds memory address space".to_string())?;
+        let size: usize = asset.file_size
+            .try_into()
+            .map_err(|_| "Asset size exceeds memory address space".to_string())?;
+        
+        let end = start
+            .checked_add(size)
+            .ok_or_else(|| "Integer overflow calculating asset data end".to_string())?;
         Ok(&self.source.as_ref()[start..end])
     }
 
     pub fn verify_footer_hash(&self) -> bool {
-        let index_start = self.footer.asset_offset as usize;
-        let index_end = (self.footer.string_pool_offset + self.footer.string_pool_size) as usize;
+        let index_start = match self.footer.asset_offset.try_into() {
+            Ok(idx) => idx,
+            Err(_) => return false,
+        };
+        let index_end_val = match self.footer.string_pool_offset.checked_add(self.footer.string_pool_size) {
+            Some(end) => end,
+            None => return false,
+        };
+        let index_end = match index_end_val.try_into() {
+            Ok(idx) => idx,
+            Err(_) => return false,
+        };
         let bytes = self.source.as_ref();
         if index_start > bytes.len() || index_end > bytes.len() || index_start > index_end {
             return false;
@@ -584,11 +630,19 @@ impl Builder {
         let mut f = File::open(path).map_err(|e| e.to_string())?;
         let size = f.metadata().map_err(|e| e.to_string())?.len();
 
-        // Read and hash
-        let mut file_bytes = Vec::with_capacity(size as usize);
-        f.read_to_end(&mut file_bytes).map_err(|e| e.to_string())?;
+        // Stream hashing (O(1) Memory footprint)
+        use xxhash_rust::xxh3::Xxh3;
+        let mut hasher = Xxh3::new();
+        let mut buffer = [0u8; 65536];
+        loop {
+            let bytes_read = f.read(&mut buffer).map_err(|e| e.to_string())?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..bytes_read]);
+        }
         
-        let hash = xxh3_128(&file_bytes);
+        let hash = hasher.digest128();
         let hash_low = hash as u64;
         let hash_high = (hash >> 64) as u64;
         let hash_key = {
@@ -618,9 +672,18 @@ impl Builder {
         self.write_padding(alignment_bytes)?;
         let asset_start_offset = self.current_offset;
 
-        // Write file bytes to the container
-        self.file.write_all(&file_bytes).map_err(|e| e.to_string())?;
-        self.current_offset += size;
+        // Stream file copy (O(1) Memory footprint)
+        f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        loop {
+            let bytes_read = f.read(&mut buffer).map_err(|e| e.to_string())?;
+            if bytes_read == 0 {
+                break;
+            }
+            self.file.write_all(&buffer[..bytes_read]).map_err(|e| e.to_string())?;
+        }
+        self.current_offset = self.current_offset
+            .checked_add(size)
+            .ok_or_else(|| "Integer overflow calculating current offset".to_string())?;
 
         let asset_index = self.assets.len() as u64;
         self.assets.push(Asset {
@@ -793,9 +856,18 @@ pub fn petrify_file<P: AsRef<Path>, Q: AsRef<Path>>(input: P, output: Q) -> Resu
     let mut footer = Footer::from_bytes(&footer_buf).ok_or("Invalid footer")?;
     
     let old_index_start = footer.asset_offset;
-    let index_size = header.footer_offset - old_index_start;
-    let data_size = old_index_start - 64;
+    let index_size = header.footer_offset
+        .checked_sub(old_index_start)
+        .ok_or_else(|| "Invalid footer offsets".to_string())?;
+    let data_size = old_index_start
+        .checked_sub(64)
+        .ok_or_else(|| "Invalid asset table offset".to_string())?;
     
+    // Safety check for index size to prevent huge memory allocation
+    if index_size > 16_000_000 {
+        return Err("Index size exceeds safety limit of 16MB".to_string());
+    }
+
     // Read index bytes
     in_file.seek(SeekFrom::Start(old_index_start)).map_err(|e| e.to_string())?;
     let mut index_bytes = vec![0u8; index_size as usize];
@@ -830,7 +902,7 @@ pub fn petrify_file<P: AsRef<Path>, Q: AsRef<Path>>(input: P, output: Q) -> Resu
         }
     }
     
-    // Recalculate footer hash because asset file offsets inside index_bytes were shifted
+    // Recalculate footer hash
     footer.footer_hash = xxh3_64(&index_bytes);
     
     // Write petrified file
@@ -844,7 +916,7 @@ pub fn petrify_file<P: AsRef<Path>, Q: AsRef<Path>>(input: P, output: Q) -> Resu
     out_file.write_all(&footer.to_bytes()).map_err(|e| e.to_string())?;
     out_file.write_all(&index_bytes).map_err(|e| e.to_string())?;
     
-    // Copy data region block by block
+    // Copy data region block by block (O(1) memory)
     in_file.seek(SeekFrom::Start(64)).map_err(|e| e.to_string())?;
     let mut buffer = vec![0u8; 65536];
     let mut remaining = data_size;
