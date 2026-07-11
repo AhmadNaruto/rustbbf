@@ -1,92 +1,78 @@
-name: Release Binaries
+name: Build and Release JNI Libraries
 
 on:
   push:
+    branches: [ "main" ]
     tags:
       - 'v*'
-  workflow_dispatch: # Allows manual testing
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: linux-x64
-            os: ubuntu-20.04
-            output_name: bbfmux
-            cmake_target: bbfmux
-            # Make Static
-            cmake_flags: >-
-              -DCMAKE_BUILD_TYPE=Release 
-              -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
-          
-          - target: windows-x64
-            os: windows-latest
-            output_name: bbfmux.exe
-            cmake_target: bbfmux
-            # Static (#3)
-            cmake_flags: >-
-              -DCMAKE_BUILD_TYPE=Release 
-              -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-
-          - target: wasm
-            os: ubuntu-latest
-            output_name: libbbf_wasm.js
-            cmake_target: libbbf_wasm
-            is_wasm: true
-            cmake_flags: -DCMAKE_BUILD_TYPE=Release
-
+    name: Build Android NDK Libraries
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          submodules: recursive
+          targets: |
+            aarch64-linux-android
+            armv7-linux-androideabi
+            x86_64-linux-android
+            i686-linux-android
 
-      - name: Setup Emscripten
-        if: matrix.is_wasm
-        uses: mymindstorm/setup-emsdk@v14
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
 
-      - name: Configure CMake
-        run: >
-          ${{ matrix.is_wasm && 'emcmake' || '' }} cmake -B build 
-          ${{ matrix.cmake_flags }}
-          -DPROJECT_VERSION="${{ github.ref_name || '0.0.1' }}"
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
 
-      - name: Build
-        # We use the specific target from the matrix (bbfmux OR libbbf_wasm)
-        run: cmake --build build --config Release --target ${{ matrix.cmake_target }}
-
-      - name: Prepare Artifact
-        shell: bash
+      - name: Set Android NDK Environment
         run: |
-          mkdir -p out/
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
 
-          if [ "${{ matrix.is_wasm }}" = "true" ]; then
-             cp bin/libbbf_wasm.js out/
-             cp bin/libbbf_wasm.wasm out/
-          else
-             if [ -f "bin/Release/${{ matrix.output_name }}" ]; then
-               cp "bin/Release/${{ matrix.output_name }}" out/
-             elif [ -f "bin/${{ matrix.output_name }}" ]; then
-               cp "bin/${{ matrix.output_name }}" out/
-             else
-               echo "::error::Could not find binary ${{ matrix.output_name }} in bin/ or bin/Release/"
-               ls -R bin/
-               exit 1
-             fi
-          fi
+      - name: Build aarch64
+        run: cargo ndk -t aarch64-linux-android build --release
 
-      - name: Upload Artifact
+      - name: Build armv7
+        run: cargo ndk -t armv7-linux-androideabi build --release
+
+      - name: Build x86_64
+        run: cargo ndk -t x86_64-linux-android build --release
+
+      - name: Build i686
+        run: cargo ndk -t i686-linux-android build --release
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p release-libs/jniLibs/arm64-v8a
+          mkdir -p release-libs/jniLibs/armeabi-v7a
+          mkdir -p release-libs/jniLibs/x86_64
+          mkdir -p release-libs/jniLibs/x86
+          
+          cp target/aarch64-linux-android/release/libbbf.so release-libs/jniLibs/arm64-v8a/
+          cp target/armv7-linux-androideabi/release/libbbf.so release-libs/jniLibs/armeabi-v7a/
+          cp target/x86_64-linux-android/release/libbbf.so release-libs/jniLibs/x86_64/
+          cp target/i686-linux-android/release/libbbf.so release-libs/jniLibs/x86/
+          
+          cp -r java release-libs/
+          cp -r kotlin release-libs/
+          
+          zip -r libbbf-android-release.zip release-libs/
+
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}-binary
-          path: out/*
+          name: libbbf-android-release
+          path: libbbf-android-release.zip
 
   create_release:
     name: Create GitHub Release
@@ -94,18 +80,13 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: Download all artifacts
+      - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: bin-temp
-          merge-multiple: true
+          name: libbbf-android-release
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            bin-temp/bbfmux
-            bin-temp/bbfmux.exe
-            bin-temp/libbbf_wasm.js
-            bin-temp/libbbf_wasm.wasm
+          files: libbbf-android-release.zip
           generate_release_notes: true
