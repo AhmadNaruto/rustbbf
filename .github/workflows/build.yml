@@ -53,26 +53,17 @@ jobs:
 
       - name: Prepare Artifacts
         run: |
-          mkdir -p release-libs/jniLibs/arm64-v8a
-          mkdir -p release-libs/jniLibs/armeabi-v7a
-          mkdir -p release-libs/jniLibs/x86_64
-          mkdir -p release-libs/jniLibs/x86
-          
-          cp target/aarch64-linux-android/release/libbbf.so release-libs/jniLibs/arm64-v8a/
-          cp target/armv7-linux-androideabi/release/libbbf.so release-libs/jniLibs/armeabi-v7a/
-          cp target/x86_64-linux-android/release/libbbf.so release-libs/jniLibs/x86_64/
-          cp target/i686-linux-android/release/libbbf.so release-libs/jniLibs/x86/
-          
-          cp -r java release-libs/
-          cp -r kotlin release-libs/
-          
-          zip -r libbbf-android-release.zip release-libs/
+          mkdir -p out/
+          cp target/aarch64-linux-android/release/libbbf.so out/libbbf-aarch64.so
+          cp target/armv7-linux-androideabi/release/libbbf.so out/libbbf-armv7.so
+          cp target/x86_64-linux-android/release/libbbf.so out/libbbf-x86_64.so
+          cp target/i686-linux-android/release/libbbf.so out/libbbf-x86.so
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libbbf-android-release
-          path: libbbf-android-release.zip
+          name: libbbf-android-libs
+          path: out/*.so
 
   create_release:
     name: Create GitHub Release
@@ -83,10 +74,11 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: libbbf-android-release
+          name: libbbf-android-libs
+          path: out
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: libbbf-android-release.zip
+          files: out/*.so
           generate_release_notes: true
